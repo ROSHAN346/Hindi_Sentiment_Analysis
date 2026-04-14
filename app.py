@@ -3,8 +3,9 @@ import pandas as pd
 import numpy as np
 import codecs
 import re
+import matplotlib.pyplot as plt
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
@@ -57,54 +58,114 @@ docs, y = load_data()
 
 
 # ==========================
-# TF-IDF
+# TF FEATURES
 # ==========================
-vectorizer = TfidfVectorizer(tokenizer=tokenize)
-X = vectorizer.fit_transform(docs)
+tf_vectorizer = CountVectorizer(tokenizer=tokenize)
+X_tf = tf_vectorizer.fit_transform(docs)
+
+
+# ==========================
+# TF-IDF FEATURES
+# ==========================
+tfidf_vectorizer = TfidfVectorizer(
+    tokenizer=tokenize,
+    ngram_range=(1,2),
+    max_features=2000
+)
+
+X_tfidf = tfidf_vectorizer.fit_transform(docs)
 
 
 # ==========================
 # MODELS
 # ==========================
 models = {
-    "Logistic Regression": LogisticRegression(max_iter=2000),
-    "SGD": SGDClassifier(max_iter=2000),
-    "SVM": SVC(kernel='linear'),
-    "KNN": KNeighborsClassifier(),
-    "Decision Tree": DecisionTreeClassifier(),
-    "Naive Bayes": MultinomialNB()
+    "Logistic Regression": lambda: LogisticRegression(max_iter=2000),
+    "SGD": lambda: SGDClassifier(max_iter=2000),
+    "SVM": lambda: SVC(kernel='linear'),
+    "KNN": lambda: KNeighborsClassifier(),
+    "Decision Tree": lambda: DecisionTreeClassifier(),
+    "Naive Bayes": lambda: MultinomialNB()
 }
 
 
-# Train models
-trained_models = {}
+# ==========================
+# TRAIN MODELS
+# ==========================
+tf_models = {}
+tfidf_models = {}
 
-for name, model in models.items():
-    model.fit(X, y)
-    trained_models[name] = model
+for name, model_func in models.items():
+    tf_models[name] = model_func().fit(X_tf, y)
+    tfidf_models[name] = model_func().fit(X_tfidf, y)
 
 
 # ==========================
-# UI
+# STREAMLIT UI
 # ==========================
 st.title("Hindi Sentiment Analysis System 🇮🇳")
 
+st.write("TF vs TF-IDF using Multiple Machine Learning Algorithms")
+
 text = st.text_area("Enter Hindi Text")
 
+
+# ==========================
+# PREDICT
+# ==========================
 if st.button("Predict"):
 
-    input_vec = vectorizer.transform([text])
+    tf_input = tf_vectorizer.transform([text])
+    tfidf_input = tfidf_vectorizer.transform([text])
 
     results = []
 
-    for name, model in trained_models.items():
+    for name in models.keys():
 
-        pred = model.predict(input_vec)[0]
+        tf_pred = tf_models[name].predict(tf_input)[0]
+        tfidf_pred = tfidf_models[name].predict(tfidf_input)[0]
 
-        sentiment = "Positive 😊" if pred == 1 else "Negative 😡"
+        tf_sent = "Positive 😊" if tf_pred == 1 else "Negative 😡"
+        tfidf_sent = "Positive 😊" if tfidf_pred == 1 else "Negative 😡"
 
-        results.append([name, sentiment])
+        results.append([name, tf_sent, tfidf_sent])
 
-    df = pd.DataFrame(results, columns=["Algorithm", "Prediction"])
 
+    # ==========================
+    # TABLE OUTPUT
+    # ==========================
+    df = pd.DataFrame(
+        results,
+        columns=["Algorithm", "TF", "TF-IDF"]
+    )
+
+    st.subheader("Prediction Results")
     st.table(df)
+
+
+    # ==========================
+    # GRAPH
+    # ==========================
+    st.subheader("TF vs TF-IDF Comparison Graph")
+
+    tf_values = [1 if "Positive" in x else 0 for x in df["TF"]]
+    tfidf_values = [1 if "Positive" in x else 0 for x in df["TF-IDF"]]
+
+    x = np.arange(len(df["Algorithm"]))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10,5))
+
+    ax.bar(x - width/2, tf_values, width, label="TF")
+    ax.bar(x + width/2, tfidf_values, width, label="TF-IDF")
+
+    ax.set_xlabel("Algorithms")
+    ax.set_ylabel("Sentiment")
+    ax.set_title("TF vs TF-IDF Comparison")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(df["Algorithm"], rotation=30)
+
+    ax.legend()
+
+    st.pyplot(fig)
